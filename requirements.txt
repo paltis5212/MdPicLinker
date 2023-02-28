@@ -1,0 +1,7 @@
+certifi==2022.12.7
+pip==23.0.1
+pipdeptree==2.5.0
+pymdown-extensions==9.9.2
+  Markdown==3.4.1
+python-wordpress-xmlrpc==2.3
+setuptools==65.5.0
