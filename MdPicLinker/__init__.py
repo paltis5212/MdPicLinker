@@ -16,7 +16,7 @@ CONFIG_FILE_PATH = "config.pickle"  # config 路徑
 
 
 @dataclass
-class MdImgsUpConfig:
+class MdPicLinkerConfig:
     """設定"""
 
     url: str
@@ -24,12 +24,12 @@ class MdImgsUpConfig:
     password: str
 
 
-class MdImgsUp:
-    """MdImgsUp 主程式"""
+class MdPicLinker:
+    """MdPicLinker 主程式"""
 
     uploaded_dict: dict[str, str] = dict()  # 上傳過的網址，以 "filename: src" 的方式儲存。
     # 設定
-    config: MdImgsUpConfig = MdImgsUpConfig(
+    config: MdPicLinkerConfig = MdPicLinkerConfig(
         url="http://mysite.wordpress.com/xmlrpc.php",
         username="username",
         password="password",
@@ -40,7 +40,7 @@ class MdImgsUp:
         # 有檔讀檔
         if Path(CONFIG_FILE_PATH).is_file():
             try:
-                self.config: MdImgsUpConfig = pickle.load(open(CONFIG_FILE_PATH, "rb"))
+                self.config: MdPicLinkerConfig = pickle.load(open(CONFIG_FILE_PATH, "rb"))
                 return
             except EOFError:
                 pass
@@ -50,7 +50,7 @@ class MdImgsUp:
 
     def input_parser(self):
         """參數控制"""
-        parser = argparse.ArgumentParser()
+        parser = argparse.ArgumentParser(prog ='python -m MdPicLinker')
         subparsers = parser.add_subparsers(dest="subcommand")
         # config 參數
         config_parser = subparsers.add_parser("config", help="設定檔操作，無參數則顯示設定檔內容。")
@@ -126,11 +126,11 @@ class MdImgsUp:
         if client:
             new_src = self.upload_to_wordpress(client, src)
             return f'<img alt="{alt}" src="{new_src}" />'
-        # Markdown 設定
-        options = dict()
+        # Markdown 擴展
+        extensions = []
         # 內聯 base64
-        options.update(extensions=["pymdownx.b64"])
-        return markdown.markdown(match, **options)
+        extensions += ["pymdownx.b64"]
+        return markdown.markdown(match, extensions=extensions)
 
     def command_upload(self, filepath: str, is_inline: bool = False):
         """upload 指令"""
