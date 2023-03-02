@@ -6,7 +6,7 @@ from getpass import getpass
 from pathlib import Path
 from pprint import pprint
 from typing import Optional
-
+from dataclasses import dataclass
 import markdown
 from wordpress_xmlrpc import Client
 from wordpress_xmlrpc.compat import xmlrpc_client
@@ -15,11 +15,21 @@ from wordpress_xmlrpc.methods import media
 CONFIG_FILE_PATH = "config.pickle"  # config 路徑
 
 
-class MdImgUp:
-    """MdImgUp 主程式"""
-    upload_dict: dict[str, str] = dict()  # 上傳過的網址，以 "filename: src" 的方式儲存。
+@dataclass
+class MdImgsUpConfig:
+    """設定"""
+
+    url: str
+    username: str
+    password: str
+
+
+class MdImgsUp:
+    """MdImgsUp 主程式"""
+
+    uploaded_dict: dict[str, str] = dict()  # 上傳過的網址，以 "filename: src" 的方式儲存。
     # 設定
-    config_dict: dict[str, str] = dict(
+    config: MdImgsUpConfig = MdImgsUpConfig(
         url="http://mysite.wordpress.com/xmlrpc.php",
         username="username",
         password="password",
@@ -30,13 +40,13 @@ class MdImgUp:
         # 有檔讀檔
         if Path(CONFIG_FILE_PATH).is_file():
             try:
-                self.config_dict = pickle.load(open(CONFIG_FILE_PATH, "rb"))
+                self.config: MdImgsUpConfig = pickle.load(open(CONFIG_FILE_PATH, "rb"))
                 return
             except EOFError:
                 pass
         # 寫檔
         print(f"無法讀取 `{CONFIG_FILE_PATH}`，設定檔重新建立，已恢復成預設值。\n")
-        pickle.dump(self.config_dict, open(CONFIG_FILE_PATH, "w+b"))
+        pickle.dump(self.config, open(CONFIG_FILE_PATH, "w+b"))
 
     def input_parser(self):
         """參數控制"""
@@ -54,31 +64,31 @@ class MdImgUp:
             action="store_true",
             help="開啟則將圖片內聯成 base64 格式，而不是上傳到遠端。預設關閉，不建議使用。",
         )
-        upload_parser.add_argument("filename", nargs=1, help="讀取的 Markdown 檔名。")
+        upload_parser.add_argument("filepath", nargs=1, help="讀取的 Markdown 檔名。")
         # 解析參數
         args = parser.parse_args()
         # 動作
         if args.subcommand == "config":
             self.command_config(is_edit=args.edit)
         elif args.subcommand == "upload":
-            self.command_upload(filename=args.filename[0], is_inline=args.inline)
+            self.command_upload(filepath=args.filepath[0], is_inline=args.inline)
+        else:
+            print("未知的指令，請用 -h 查看幫助。")
 
     def command_config(self, is_edit: bool = False):
+        """設定檔操作"""
         # 編輯
-        config_dict = self.config_dict
         if is_edit:
-            config_dict.update(
-                url=input(f"請輸入 WordPress XML-RPC 網址 ({config_dict.get('url')})：")
-                or config_dict["url"],
-                username=input(f"請輸入 WordPress 帳號 ({config_dict.get('username')})：")
-                or config_dict["username"],
-                password=getpass("請輸入 WordPress 密碼："),
+            self.config.update(
+                url=input(f"請輸入 WordPress XML-RPC 網址 ({self.config.url})：")
+                or self.config.url,
+                username=input(f"請輸入 WordPress 帳號 ({self.config.username})：")
+                or self.config.username,
+                password=getpass("請輸入 WordPress 密碼：") or self.config.password,
             )
-
-            pickle.dump(config_dict, open(CONFIG_FILE_PATH, "wb"))
-
+            pickle.dump(self.config, open(CONFIG_FILE_PATH, "wb"))
         print("已儲存的設定：")
-        pprint({k: v for k, v in config_dict.items() if k != "password"})
+        pprint({k: v for k, v in vars(self.config).items() if k != "password"})
 
     def upload_to_wordpress(self, client: Client, src: str):
         """上傳圖片到 WordPress，並回傳網址"""
@@ -92,13 +102,13 @@ class MdImgUp:
         # 獲得檔案
         data["bits"] = xmlrpc_client.Binary(open(src, "rb").read())
         # 避免重複上傳
-        if filename not in self.upload_dict:
+        if filename not in self.uploaded_dict:
             response = client.call(media.UploadFile(data))
             new_src = response.get("url")
             print(f"已上傳圖片到 {new_src}")
-            self.upload_dict[filename] = new_src
+            self.uploaded_dict[filename] = new_src
         else:
-            new_src = self.upload_dict[filename]
+            new_src = self.uploaded_dict[filename]
         return new_src
 
     def markdown_to_html_and_upload(
@@ -122,19 +132,19 @@ class MdImgUp:
         options.update(extensions=["pymdownx.b64"])
         return markdown.markdown(match, **options)
 
-    def command_upload(self, filename: str, is_inline: bool = False):
+    def command_upload(self, filepath: str, is_inline: bool = False):
         """upload 指令"""
-        base_dir = os.path.dirname(filename)
-        with open(filename, "r+", encoding="utf-8") as f:
+        base_dir = os.path.dirname(filepath)
+        with open(filepath, "r+", encoding="utf-8") as f:
             md = f.read()
             img_pattern = r"!\[(.*)\]\((.+?)\)"
             client = (
                 None
                 if is_inline
                 else Client(
-                    self.config_dict["url"],
-                    self.config_dict["username"],
-                    self.config_dict["password"],
+                    self.config.url,
+                    self.config.username,
+                    self.config.password,
                 )
             )
             md = re.sub(
@@ -148,6 +158,6 @@ class MdImgUp:
             f.truncate()
 
     def cli(self):
-        """執行 cli"""
+        """Execute the cli."""
         self.init_config()
         self.input_parser()
